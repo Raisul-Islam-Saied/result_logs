@@ -1,0 +1,850 @@
+
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>NexGen Live Monitor</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Outfit:wght@300;400;600;800&display=swap');
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: #050505;
+            color: #e2e8f0;
+            overflow: hidden; /* Prevent body scroll for app-like feel */
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Premium Glassmorphism */
+        .glass {
+            background: rgba(20, 20, 20, 0.6);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .glass-card {
+            background: linear-gradient(145deg, rgba(30,30,30,0.8) 0%, rgba(15,15,15,0.9) 100%);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+            border-radius: 16px;
+        }
+
+        /* Glowing Text & Elements */
+        .glow-text {
+            background: linear-gradient(to right, #00f2fe, #4facfe);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .glow-icon {
+            filter: drop-shadow(0 0 8px rgba(0, 242, 254, 0.6));
+        }
+
+        /* Custom Scrollbar for inner areas */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(0, 242, 254, 0.3); border-radius: 10px; }
+
+        /* Animations */
+        @keyframes pulse-ring {
+            0% { transform: scale(0.8); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+            100% { transform: scale(0.8); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+        .live-indicator { animation: pulse-ring 2s infinite; }
+
+        .slide-up { animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        /* Terminal specific */
+        .terminal-container {
+            background: radial-gradient(circle at center, #111827 0%, #000000 100%);
+        }
+        .terminal-line { opacity: 0; animation: typeIn 0.2s forwards; }
+        @keyframes typeIn { to { opacity: 1; } }
+        
+        /* Bottom Nav styling */
+        .nav-item {
+            transition: all 0.3s ease;
+            color: #64748b;
+        }
+        .nav-item.active {
+            color: #00f2fe;
+            transform: translateY(-4px);
+            text-shadow: 0 0 10px rgba(0, 242, 254, 0.5);
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col relative">
+
+    <!-- Ambient Background Effects -->
+    <div class="absolute inset-0 pointer-events-none z-0 overflow-hidden">
+        <div class="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-blue-600/10 rounded-full blur-[100px]"></div>
+        <div class="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-purple-600/10 rounded-full blur-[100px]"></div>
+    </div>
+
+    <!-- Header (Fixed Top) -->
+    <header class="glass h-16 flex items-center justify-between px-5 z-20 sticky top-0">
+        <div class="flex items-center gap-3">
+            <i class="fa-brands fa-space-awesome text-2xl text-cyan-400 glow-icon"></i>
+            <div>
+                <h1 class="text-lg font-bold tracking-wide glow-text">RESULT LOGS</h1>
+                <p class="text-[10px] text-slate-400 font-mono -mt-1 uppercase flex items-center gap-1">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 live-indicator block"></span>
+                    Live Connection
+                </p>
+            </div>
+        </div>
+        <div class="flex items-center gap-2">
+            <span id="syncStatus" class="text-[10px] font-mono text-cyan-500 bg-cyan-500/10 px-2 py-1 rounded border border-cyan-500/20">SYNCING...</span>
+        </div>
+    </header>
+
+    <!-- Main Scrollable Content Area -->
+    <main class="flex-1 overflow-y-auto pb-20 z-10 scroll-smooth relative" id="mainScrollArea">
+        
+        <!-- ================= VIEW 1: DASHBOARD ================= -->
+        <div id="view-dashboard" class="p-5 space-y-5 hidden slide-up">
+            
+            <!-- Quick Stats Grid -->
+            <div class="grid grid-cols-2 gap-4">
+                <div class="glass-card p-4 flex flex-col relative overflow-hidden group">
+                    <div class="absolute -right-4 -top-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                        <i class="fa-solid fa-radar text-7xl text-cyan-500"></i>
+                    </div>
+                    <span class="text-xs text-slate-400 font-semibold mb-1 uppercase tracking-wider">মোট সার্চ</span>
+                    <span class="text-3xl font-bold text-white font-mono" id="stat-total">0</span>
+                </div>
+                
+                <div class="glass-card p-4 flex flex-col relative overflow-hidden group">
+                    <div class="absolute -right-4 -top-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                        <i class="fa-solid fa-users-viewfinder text-7xl text-purple-500"></i>
+                    </div>
+                    <span class="text-xs text-slate-400 font-semibold mb-1 uppercase tracking-wider">ইউনিক ডিভাইস</span>
+                    <span class="text-3xl font-bold text-white font-mono" id="stat-users">0</span>
+                </div>
+
+                <div class="glass-card p-4 flex flex-col relative overflow-hidden group">
+                    <div class="absolute -right-4 -top-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                        <i class="fa-solid fa-calendar-day text-7xl text-emerald-500"></i>
+                    </div>
+                    <span class="text-xs text-slate-400 font-semibold mb-1 uppercase tracking-wider">আজকের সার্চ</span>
+                    <span class="text-3xl font-bold text-white font-mono" id="stat-today">0</span>
+                </div>
+
+                <div class="glass-card p-4 flex flex-col relative overflow-hidden group">
+                    <div class="absolute -right-4 -top-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                        <i class="fa-solid fa-fire-flame-curved text-7xl text-amber-500"></i>
+                    </div>
+                    <span class="text-xs text-slate-400 font-semibold mb-1 uppercase tracking-wider">টপ ক্লাস</span>
+                    <span class="text-2xl font-bold text-white font-mono truncate mt-1" id="stat-top-class">-</span>
+                </div>
+            </div>
+
+            <!-- অ্যানালিটিক্স চার্ট -->
+            <div class="glass-card p-5">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-sm font-bold text-white uppercase tracking-wider"><i class="fa-solid fa-chart-column text-purple-400 mr-2"></i>ক্লাস ভিত্তিক পরিসংখ্যান</h3>
+                </div>
+                <div class="relative h-48 w-full">
+                    <canvas id="classBarChart"></canvas>
+                </div>
+            </div>
+
+            <!-- মোস্ট সার্চড টার্গেট -->
+            <div class="glass-card p-5">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-sm font-bold text-white uppercase tracking-wider"><i class="fa-solid fa-crosshairs text-rose-400 mr-2"></i>সর্বোচ্চ খোঁজা হয়েছে</h3>
+                </div>
+                <div class="space-y-3" id="topTargetsList">
+                    <div class="text-xs text-slate-500 text-center py-2">ডেটা প্রসেস হচ্ছে...</div>
+                </div>
+            </div>
+
+            <!-- Recent Activity Mini View -->
+            <div class="glass-card p-5">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-sm font-bold text-white uppercase tracking-wider"><i class="fa-solid fa-bolt text-amber-400 mr-2"></i>সাম্প্রতিক পিন</h3>
+                </div>
+                <div class="space-y-3" id="recentActivityList">
+                    <div class="animate-pulse flex space-x-4">
+                        <div class="rounded-full bg-slate-700 h-10 w-10"></div>
+                        <div class="flex-1 space-y-2 py-1">
+                            <div class="h-2 bg-slate-700 rounded w-3/4"></div>
+                            <div class="h-2 bg-slate-700 rounded w-1/2"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= VIEW 2: LIVE TERMINAL ================= -->
+        <div id="view-terminal" class="h-full p-4 hidden slide-up">
+            <div class="glass-card h-full flex flex-col overflow-hidden border border-slate-700/50 shadow-[0_0_30px_rgba(0,242,254,0.1)] terminal-container">
+                <div class="bg-black/60 px-4 py-2 flex items-center justify-between border-b border-white/5">
+                    <span class="text-[10px] font-mono text-slate-500">root@nexus-realtime:~</span>
+                    <i class="fa-solid fa-wifi text-emerald-500 text-xs animate-pulse"></i>
+                </div>
+                <div class="flex-1 p-4 overflow-y-auto font-mono text-xs md:text-sm" id="terminalBody">
+                    <div class="text-cyan-500 mb-2">Initialize Core Datastream... OK</div>
+                    <div class="text-slate-500 mb-4">Awaiting live packets...</div>
+                    <div id="termAnchor"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= VIEW 3: USER INTEL ================= -->
+        <div id="view-intel" class="p-5 space-y-4 hidden slide-up">
+            <div class="flex justify-between items-center mb-2">
+                <h2 class="text-lg font-bold text-white">ইউজার ইন্টেলিজেন্স</h2>
+                <span class="text-xs bg-purple-500/20 text-purple-400 px-2 py-1 rounded border border-purple-500/30 font-mono" id="intelCount">0 Users</span>
+            </div>
+            
+            <div class="relative mb-4">
+                <i class="fa-solid fa-search absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400"></i>
+                <input type="text" id="userSearch" placeholder="নাম বা আইডি দিয়ে খুঁজুন..." class="w-full bg-black/40 border border-slate-700 rounded-xl py-3 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-cyan-500 transition-colors placeholder-slate-500">
+            </div>
+
+            <div class="space-y-3" id="intelList"></div>
+        </div>
+
+        <!-- ================= VIEW 4: ALL LOGS ================= -->
+        <div id="view-logs" class="p-5 hidden slide-up">
+            <h2 class="text-lg font-bold text-white mb-4">সম্পূর্ণ সিস্টেম লগ</h2>
+            <div class="space-y-3" id="allLogsList"></div>
+        </div>
+
+    </main>
+
+    <!-- Bottom Navigation -->
+    <nav class="glass h-16 fixed bottom-0 w-full z-30 flex justify-around items-center px-2 pb-safe">
+        <button onclick="switchTab('dashboard')" id="nav-dashboard" class="nav-item active flex flex-col items-center justify-center w-16 h-full gap-1">
+            <i class="fa-solid fa-layer-group text-xl"></i>
+            <span class="text-[9px] font-semibold tracking-wider">ড্যাশবোর্ড</span>
+        </button>
+        <button onclick="switchTab('terminal')" id="nav-terminal" class="nav-item flex flex-col items-center justify-center w-16 h-full gap-1 relative">
+            <i class="fa-solid fa-terminal text-xl"></i>
+            <span class="text-[9px] font-semibold tracking-wider">টার্মিনাল</span>
+            <span class="absolute top-2 right-2 w-2 h-2 bg-emerald-500 rounded-full live-indicator"></span>
+        </button>
+        <button onclick="switchTab('intel')" id="nav-intel" class="nav-item flex flex-col items-center justify-center w-16 h-full gap-1">
+            <i class="fa-solid fa-user-secret text-xl"></i>
+            <span class="text-[9px] font-semibold tracking-wider">ইন্টেল</span>
+        </button>
+        <button onclick="switchTab('logs')" id="nav-logs" class="nav-item flex flex-col items-center justify-center w-16 h-full gap-1">
+            <i class="fa-solid fa-list-ul text-xl"></i>
+            <span class="text-[9px] font-semibold tracking-wider">লগস</span>
+        </button>
+    </nav>
+
+    <!-- Modal for User Intelligence -->
+    <div id="intelModal" class="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-gradient-to-b from-slate-900 to-black w-full sm:w-[90%] sm:max-w-md h-[80vh] sm:h-[70vh] rounded-t-3xl sm:rounded-3xl border border-slate-700/50 flex flex-col transform translate-y-full sm:translate-y-0 transition-transform duration-300" id="intelModalContent">
+            <div class="p-5 border-b border-white/5 flex justify-between items-start relative">
+                <div class="absolute top-2 left-1/2 transform -translate-x-1/2 w-12 h-1 bg-slate-600 rounded-full sm:hidden"></div>
+                <div>
+                    <h3 class="text-xl font-bold text-white mb-1" id="modalUserName">User Name</h3>
+                    <p class="text-xs font-mono text-cyan-400" id="modalUserId">ID: 123456</p>
+                </div>
+                <button onclick="closeIntelModal()" class="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-slate-400 hover:text-white">
+                    <i class="fa-solid fa-times"></i>
+                </button>
+            </div>
+            <div class="p-5 flex-1 overflow-y-auto">
+                <div class="text-xs text-slate-500 mb-3 uppercase tracking-wider font-semibold">টার্গেট হিস্ট্রি (এই ইউজার যা যা খুঁজছে)</div>
+                <div class="space-y-3 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-700 before:to-transparent" id="modalTargetsList"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Initialization Overlay -->
+    <div id="initOverlay" class="fixed inset-0 z-[200] bg-black flex flex-col items-center justify-center transition-opacity duration-700">
+        <i class="fa-brands fa-space-awesome text-5xl text-cyan-500 glow-icon mb-6 animate-bounce"></i>
+        <div class="text-white font-mono tracking-[0.3em] text-sm mb-2 text-glow">CONNECTING TO NEXUS</div>
+        <div class="w-48 h-1 bg-slate-800 rounded-full overflow-hidden">
+            <div class="h-full bg-cyan-500 w-1/2 animate-[ping_1.5s_infinite]"></div>
+        </div>
+    </div>
+
+    <script>
+        /* ================= Configuration & State ================= */
+        const API_URL = "https://script.google.com/macros/s/AKfycbxoQM0Xf5SrusbRuCwe4b3s92rK7e014DYkgiuM3yOLs9KKZ773MUkmysrM3PcxyCbpbw/exec";
+        const SECRET_KEY = "ARDM_DELETE_2026";
+        
+        let globalLogs = [];
+        let previousTotal = 0;
+        let isFirstLoad = true;
+        let pollingInterval = null;
+        let intelDataMap = {};
+        
+        // Chart Instance
+        let dashboardChart = null;
+
+        /* ================= Helper Functions ================= */
+        function timeAgo(dateString) {
+            if (!dateString) return 'Just now';
+            const date = new Date(dateString);
+            if(isNaN(date)) return dateString.split(' ')[1] || 'Just now'; // Fallback for invalid dates
+            
+            const now = new Date();
+            const seconds = Math.floor((now - date) / 1000);
+            
+            let interval = seconds / 31536000;
+            if (interval > 1) return Math.floor(interval) + " years";
+            interval = seconds / 2592000;
+            if (interval > 1) return Math.floor(interval) + " months";
+            interval = seconds / 86400;
+            if (interval > 1) return Math.floor(interval) + " days";
+            interval = seconds / 3600;
+            if (interval > 1) return Math.floor(interval) + " hours";
+            interval = seconds / 60;
+            if (interval > 1) return Math.floor(interval) + " mins";
+            return "Now";
+        }
+
+        function formatDateReadable(dateString) {
+            if (!dateString) return '-';
+            const d = new Date(dateString);
+            if(isNaN(d)) return dateString; 
+            return d.toLocaleString('en-US', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute:'2-digit', hour12: true });
+        }
+
+        /* ================= Boot Sequence ================= */
+        window.onload = () => {
+            switchTab('dashboard'); 
+            fetchData();
+            pollingInterval = setInterval(fetchData, 7000); 
+        };
+
+        /* ================= Data Fetching logic ================= */
+        async function fetchData() {
+            const statusEl = document.getElementById('syncStatus');
+            statusEl.innerText = "FETCHING...";
+            statusEl.className = "text-[10px] font-mono text-amber-500 bg-amber-500/10 px-2 py-1 rounded border border-amber-500/20 animate-pulse";
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ action: "get_logs", key: SECRET_KEY }),
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+                });
+
+                const result = await response.json();
+
+                if (result.status === "success") {
+                    processData(result.data);
+                    
+                    statusEl.innerText = "LIVE";
+                    statusEl.className = "text-[10px] font-mono text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded border border-emerald-500/20";
+                    
+                    if(isFirstLoad) {
+                        setTimeout(() => {
+                            document.getElementById('initOverlay').style.opacity = '0';
+                            setTimeout(() => document.getElementById('initOverlay').style.display = 'none', 700);
+                        }, 500);
+                        isFirstLoad = false;
+                    }
+                } else {
+                    statusEl.innerText = "ERROR";
+                    statusEl.className = "text-[10px] font-mono text-rose-500 bg-rose-500/10 px-2 py-1 rounded border border-rose-500/20";
+                }
+            } catch (error) {
+                statusEl.innerText = "OFFLINE";
+                statusEl.className = "text-[10px] font-mono text-rose-500 bg-rose-500/10 px-2 py-1 rounded border border-rose-500/20";
+            }
+        }
+
+        /* ================= Data Processing ================= */
+        function processData(rawArray) {
+            if(!rawArray || rawArray.length <= 1) return;
+
+            const headers = rawArray[0];
+            const rows = rawArray.slice(1);
+            
+            let newLogs = rows.map(row => {
+                let obj = {};
+                headers.forEach((h, i) => obj[h] = row[i]);
+                return obj;
+            });
+
+            const currentTotal = newLogs.length;
+
+            if (currentTotal > previousTotal && !isFirstLoad) {
+                const newlyAddedCount = currentTotal - previousTotal;
+                const newlyAddedLogs = newLogs.slice(currentTotal - newlyAddedCount);
+                
+                newlyAddedLogs.forEach(log => appendToTerminal(log));
+                if (navigator.vibrate) navigator.vibrate(50);
+            }
+
+            globalLogs = newLogs.reverse();
+            
+            if(isFirstLoad) {
+                globalLogs.reverse().forEach(log => appendToTerminal(log));
+            }
+
+            previousTotal = currentTotal;
+
+            buildIntelData();
+            updateDashboard();
+            renderAllLogs();
+            renderIntelList();
+        }
+
+       /* ================= Build User Relationships & Fix Duplicate Names ================= */
+       function buildIntelData() {
+       intelDataMap = {};
+       let nameCount = {}; // ট্র্যাক করবে কোন নাম কতবার এসেছে
+       let uidToNameMap = {}; // ট্র্যাক করবে কোন আইডির জন্য কী নাম সেট করা হয়েছে
+       
+       // ধাপ ১: পুরাতন থেকে নতুন লগের দিকে লুপ চালানো (যাতে আসল ইউজার আসল নাম পায়)
+       for (let i = globalLogs.length - 1; i >= 0; i--) {
+       const log = globalLogs[i];
+       const uid = log['সার্চকারীর আইডি'] || 'Unknown';
+       const originalName = log['সার্চকারীর নাম'] || 'Unknown User';
+       
+       // যদি এই আইডি আগে কখনো লিস্টে না এসে থাকে
+       if (!uidToNameMap[uid]) {
+       if (!nameCount[originalName]) {
+       // নামটি একদম নতুন হলে
+       nameCount[originalName] = 1;
+       uidToNameMap[uid] = originalName;
+       } else {
+       // নামটি আগে কেউ ব্যবহার করে থাকলে, কাউন্ট বাড়িয়ে ব্র্যাকেটে বসিয়ে দেওয়া
+       nameCount[originalName]++;
+       uidToNameMap[uid] = `${originalName} (${nameCount[originalName]})`;
+       }
+       }
+       
+       // গ্লোবাল লগে ইউজারের নামটি সরাসরি ওভাররাইট করে দেওয়া 
+       // (যাতে টার্মিনাল, রিসেন্ট পিন, এবং লগস-এ অটোমেটিক এই নতুন নামটি দেখায়)
+       log['সার্চকারীর নাম'] = uidToNameMap[uid]; 
+       }
+       
+       // ধাপ ২: ইন্টেল ডাটা তৈরি করা
+       globalLogs.forEach(log => {
+       const uid = log['সার্চকারীর আইডি'] || 'Unknown';
+       const displayName = log['সার্চকারীর নাম']; // এটি এখন আপডেটেড নাম পাবে
+       
+       if(!intelDataMap[uid]) {
+       intelDataMap[uid] = { name: displayName, uid: uid, searches: [] };
+       }
+       intelDataMap[uid].searches.push(log);
+       });
+       }
+       
+
+        /* ================= Update Views ================= */
+        function updateDashboard() {
+            // 1. Total and Unique Users
+            document.getElementById('stat-total').innerText = globalLogs.length;
+            document.getElementById('stat-users').innerText = Object.keys(intelDataMap).length;
+
+            // 2. Today's Search Calculation (Fixed with accurate Date parsing)
+            const todayDate = new Date();
+            let todayCount = 0;
+            globalLogs.forEach(log => {
+                const logTime = log['তারিখ ও সময়'] || '';
+                const d = new Date(logTime);
+                if (!isNaN(d)) {
+                    if (d.getDate() === todayDate.getDate() &&
+                        d.getMonth() === todayDate.getMonth() &&
+                        d.getFullYear() === todayDate.getFullYear()) {
+                        todayCount++;
+                    }
+                }
+            });
+            document.getElementById('stat-today').innerText = todayCount;
+
+            const classCountMap = {};
+            const targetCountMap = {}; 
+            
+            globalLogs.forEach(log => {
+            // Class Counting
+            let cls = (log['শ্রেণি'] || 'Unknown').replace(/^Class\s+/i, '');
+            classCountMap[cls] = (classCountMap[cls] || 0) + 1;
+            
+            // Target Counting (FIXED LOGIC WITH CLASS SEPARATION)
+            let rawTarget = log['সার্চ ইনপুট'] || '';
+            let stdName = log['শিক্ষার্থীর নাম'] || '';
+            
+            // স্পেস রিমুভ করা এবং সব ছোট হাতের অক্ষরে রূপান্তর করা
+            let cleanTarget = rawTarget.toString().trim().toLowerCase();
+            
+            // ইউনিক কী তৈরি করা (ক্লাস + রোল) যাতে এক ক্লাসের রোল অন্য ক্লাসের সাথে না মেশে
+            let targetKey = cls.toLowerCase() + "_" + cleanTarget; 
+            let displayTarget = rawTarget.toString().trim();
+            
+            if(cleanTarget !== '' && cleanTarget !== 'unknown') {
+            if(!targetCountMap[targetKey]) {
+            targetCountMap[targetKey] = { 
+            count: 0, 
+            name: stdName, 
+            originalId: displayTarget,
+            className: cls // ক্লাসের নামও সেভ রাখা হলো
+            };
+            }
+            targetCountMap[targetKey].count += 1;
+            
+            // নাম আপডেট
+            if(stdName && !targetCountMap[targetKey].name) {
+            targetCountMap[targetKey].name = stdName; 
+            }
+            }
+            });
+            
+
+            // Find Top Class (Fixed to show without "Class " word)
+            let maxClass = '-';
+            let maxClassCount = 0;
+            for(let c in classCountMap) {
+                if(classCountMap[c] > maxClassCount) {
+                    maxClassCount = classCountMap[c];
+                    maxClass = c;
+                }
+            }
+            document.getElementById('stat-top-class').innerText = maxClass;
+
+            // 4. Update Bar Chart
+            updateChart(classCountMap);
+
+            // 5. Update Top Targets List (Fixed to show names)
+            updateTopTargets(targetCountMap);
+
+               // 6. Recent Activity Mini List (শিক্ষার্থীর নামসহ আপডেট করা হয়েছে)
+               const recentHTML = globalLogs.slice(0, 5).map(log => {
+               const searchInput = log['সার্চ ইনপুট'] || 'N/A';
+               const className = (log['শ্রেণি'] || '').replace(/^Class\s+/i, '');
+               const studentName = log['শিক্ষার্থীর নাম'] || ''; // শিক্ষার্থীর নাম বের করা হলো
+               
+               return `
+               <div class="flex items-center gap-3 bg-white/5 p-3 rounded-xl border border-white/5">
+               <div class="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white font-bold text-lg shadow-lg">
+               ${(log['সার্চকারীর নাম'] || 'U')[0].toUpperCase()}
+               </div>
+               <div class="flex-1 overflow-hidden">
+               <div class="text-sm font-semibold text-white truncate">${log['সার্চকারীর নাম']}</div>
+               <div class="text-[10px] text-cyan-400 font-mono truncate">
+               <span class="text-white">${searchInput}</span> (${className})
+               ${studentName ? `<span class="text-emerald-400 ml-1">➔ ${studentName}</span>` : ''}
+               </div>
+               </div>
+               <div class="text-[9px] text-slate-500 font-mono text-right whitespace-nowrap">
+               ${timeAgo(log['তারিখ ও সময়'])}
+               </div>
+               </div>
+               `;
+               }).join('');
+               
+               document.getElementById('recentActivityList').innerHTML = recentHTML;
+               }
+
+        // --- Handle Chart ---
+        function updateChart(classData) {
+            const ctx = document.getElementById('classBarChart').getContext('2d');
+            const labels = Object.keys(classData);
+            const data = Object.values(classData);
+
+            const gradient = ctx.createLinearGradient(0, 0, 0, 200);
+            gradient.addColorStop(0, 'rgba(0, 242, 254, 0.8)');
+            gradient.addColorStop(1, 'rgba(79, 172, 254, 0.2)');
+
+            if(dashboardChart) {
+                dashboardChart.data.labels = labels;
+                dashboardChart.data.datasets[0].data = data;
+                dashboardChart.update();
+            } else {
+                dashboardChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'মোট সার্চ',
+                            data: data,
+                            backgroundColor: gradient,
+                            borderColor: '#00f2fe',
+                            borderWidth: 1,
+                            borderRadius: 6,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false }
+                        },
+                        scales: {
+                            y: { 
+                                beginAtZero: true,
+                                grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false },
+                                ticks: { color: '#94a3b8', stepSize: 1 }
+                            },
+                            x: {
+                                grid: { display: false, drawBorder: false },
+                                ticks: { color: '#94a3b8' }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        // --- Handle Top Targets ---
+        function updateTopTargets(targetData) {
+            const sortedTargets = Object.entries(targetData).sort((a, b) => b[1].count - a[1].count).slice(0, 5);
+
+            if(sortedTargets.length === 0) {
+                document.getElementById('topTargetsList').innerHTML = '<div class="text-xs text-slate-500 text-center py-2">কোনো ডেটা নেই</div>';
+                return;
+            }
+
+            const html = sortedTargets.map((item, index) => {
+            const count = item[1].count;
+            const name = item[1].name;
+            const targetId = item[1].originalId;
+            const className = item[1].className; // ক্লাসের নাম বের করা হলো
+            
+            // Name format logic (রোল + নাম + ক্লাস)
+            let displayName = targetId;
+            if (name) {
+            displayName += ` <span class="text-[10px] text-cyan-400 font-sans ml-1 truncate max-w-[120px] inline-block align-bottom">(${name})</span>`;
+            }
+            // ক্লাসের নাম যোগ করা হলো
+            displayName += ` <span class="text-[9px] text-slate-500 font-sans ml-1">C-${className}</span>`;
+            
+            const medalColors = ['text-amber-400', 'text-slate-300', 'text-amber-600', 'text-slate-500', 'text-slate-500'];
+            return `
+            <div class="flex items-center justify-between bg-black/30 p-3 rounded-lg border border-white/5">
+            <div class="flex items-center gap-3 overflow-hidden">
+            <span class="font-bold font-mono ${medalColors[index] || 'text-slate-500'} w-4 text-center shrink-0">#${index + 1}</span>
+            <span class="text-white font-mono text-sm truncate whitespace-nowrap">${displayName}</span>
+            </div>
+            <div class="text-xs bg-rose-500/10 text-rose-400 px-2 py-1 rounded font-bold shrink-0 ml-2">
+            ${count} বার
+            </div>
+            </div>
+            `
+            }).join('');
+            
+            document.getElementById('topTargetsList').innerHTML = html;
+        }
+
+        /* ================= Real-time Terminal ================= */
+        function appendToTerminal(log) {
+            const term = document.getElementById('terminalBody');
+            const anchor = document.getElementById('termAnchor');
+            
+            const time = log['তারিখ ও সময়'] ? (new Date(log['তারিখ ও সময়']).toLocaleTimeString() !== 'Invalid Date' ? new Date(log['তারিখ ও সময়']).toLocaleTimeString('en-US', {hour12: false}) : log['তারিখ ও সময়'].split(' ')[1] || '') : '';
+            const user = (log['সার্চকারীর নাম'] || 'Unknown').substring(0, 10);
+            const target = log['সার্চ ইনপুট'] || 'N/A';
+            // Fixed: Strip "Class " from terminal output
+            const cls = (log['শ্রেণি'] || '').replace(/^Class\s+/i, '');
+
+            const line = document.createElement('div');
+            line.className = 'terminal-line mb-1 break-words';
+            
+            line.innerHTML = `
+                <span class="text-slate-600">[${time}]</span> 
+                <span class="text-purple-400">USR:${user.padEnd(8)}</span> 
+                <span class="text-slate-400">-></span> 
+                <span class="text-amber-400">${cls}</span> 
+                <span class="text-slate-400">TARGET:</span><span class="text-emerald-400 font-bold">${target}</span>
+            `;
+            
+            term.insertBefore(line, anchor);
+            
+            if(term.childElementCount > 50) {
+                term.removeChild(term.children[2]); 
+            }
+            
+            term.scrollTop = term.scrollHeight;
+        }
+
+        /* ================= Render All Logs Tab ================= */
+        function renderAllLogs() {
+            const html = globalLogs.map(log => `
+                <div class="glass-card p-4 flex flex-col gap-2">
+                    <div class="flex justify-between items-start">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-fingerprint text-slate-500"></i>
+                            <span class="font-bold text-white text-sm">${log['সার্চকারীর নাম']}</span>
+                        </div>
+                        <span class="text-[10px] text-slate-400 font-mono">${formatDateReadable(log['তারিখ ও সময়'])}</span>
+                    </div>
+                    <div class="bg-black/50 p-2 rounded border border-white/5 font-mono text-xs flex justify-between items-center mt-1">
+                        <div>
+                            <span class="text-slate-500">Action:</span> <span class="text-amber-400">${(log['শ্রেণি']||'').replace(/^Class\s+/i, '')} > ${log['পরীক্ষা']}</span>
+                        </div>
+                        <div>
+                            <span class="text-slate-500">Q:</span> <span class="text-emerald-400 bg-emerald-400/10 px-1 py-0.5 rounded">${log['সার্চ ইনপুট']}</span>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+            document.getElementById('allLogsList').innerHTML = html;
+        }
+
+        /* ================= User Intel Tab ================= */
+        function renderIntelList(searchTerm = "") {
+            const listEl = document.getElementById('intelList');
+            const users = Object.values(intelDataMap);
+            
+            document.getElementById('intelCount').innerText = `${users.length} Users`;
+
+            const filtered = users.filter(u => 
+                u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                u.uid.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+
+            filtered.sort((a, b) => b.searches.length - a.searches.length);
+
+            const html = filtered.map(u => `
+                <div onclick="openIntelModal('${u.uid}')" class="glass-card p-4 flex items-center justify-between cursor-pointer hover:bg-white/5 active:scale-[0.98] transition-all">
+                    <div class="flex items-center gap-3">
+                        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center shadow-lg relative">
+                            <span class="text-white font-bold text-xl">${u.name[0].toUpperCase()}</span>
+                        </div>
+                        <div>
+                            <div class="font-bold text-white text-sm">${u.name}</div>
+                            <div class="text-[10px] text-slate-400 font-mono">ID: ${u.uid}</div>
+                        </div>
+                    </div>
+                    <div class="flex flex-col items-end">
+                        <span class="text-2xl font-black text-cyan-400">${u.searches.length}</span>
+                        <span class="text-[9px] text-slate-500 uppercase">Searches</span>
+                    </div>
+                </div>
+            `).join('');
+            
+            listEl.innerHTML = html;
+        }
+
+        document.getElementById('userSearch').addEventListener('input', (e) => {
+            renderIntelList(e.target.value);
+        });
+
+     /* ================= Intel Modal ================= */
+     let isIntelModalOpen = false; // ব্যাক বাটন ট্র্যাক করার জন্য ভেরিয়েবল
+     
+     function openIntelModal(uid) {
+     const user = intelDataMap[uid];
+     if(!user) return;
+     
+     document.getElementById('modalUserName').innerText = user.name;
+     document.getElementById('modalUserId').innerText = "ID: " + user.uid;
+     
+     const targetsHTML = user.searches.map(log => `
+     <div class="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
+     <div class="flex items-center justify-center w-8 h-8 rounded-full border-4 border-slate-900 bg-emerald-500 text-slate-900 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10 ml-1">
+     <i class="fa-solid fa-bullseye text-xs"></i>
+     </div>
+     <div class="w-[calc(100%-3rem)] md:w-[calc(50%-2.5rem)] p-3 rounded-xl bg-slate-800/80 border border-slate-700 shadow-lg ml-4 md:ml-0 group-hover:border-emerald-500/50 transition-colors">
+     <div class="flex items-center justify-between mb-1">
+     <div class="font-bold text-emerald-400 font-mono text-sm">Target: ${log['সার্চ ইনপুট']}</div>
+     <div class="text-[9px] text-slate-400">${timeAgo(log['তারিখ ও সময়'])}</div>
+     </div>
+     <div class="text-xs text-slate-300">${(log['শ্রেণি']||'').replace(/^Class\s+/i, '')} • ${log['পরীক্ষা']}</div>
+     ${log['শিক্ষার্থীর নাম'] ? `<div class="text-xs text-cyan-400 mt-1"><i class="fa-solid fa-user-check mr-1"></i>Found: ${log['শিক্ষার্থীর নাম']}</div>` : ''}
+     </div>
+     </div>
+     `).join('');
+     
+     document.getElementById('modalTargetsList').innerHTML = targetsHTML;
+     
+     const modal = document.getElementById('intelModal');
+     const content = document.getElementById('intelModalContent');
+     
+     modal.classList.remove('hidden');
+     setTimeout(() => {
+     modal.classList.remove('opacity-0');
+     content.classList.remove('translate-y-full');
+     }, 10);
+     
+     // --- নতুন যুক্ত করা অংশ (URL স্টেট আপডেট) ---
+     history.pushState({ modal: 'intel' }, '', '#user-details');
+     isIntelModalOpen = true;
+     }
+     
+     function closeIntelModal() {
+     const modal = document.getElementById('intelModal');
+     const content = document.getElementById('intelModalContent');
+     
+     modal.classList.add('opacity-0');
+     content.classList.add('translate-y-full');
+     
+     setTimeout(() => {
+     modal.classList.add('hidden');
+     }, 300);
+     
+     // --- নতুন যুক্ত করা অংশ (URL স্টেট ক্লিয়ার) ---
+     isIntelModalOpen = false;
+     if (window.location.hash === '#user-details') {
+     history.back(); // URL থেকে #user-details সরিয়ে ফেলবে
+     }
+     }
+     
+     // --- মডালের বাইরে ক্লিক ও ব্যাক বাটনের ইভেন্ট লিসেনার ---
+     
+     // মোবাইলের ব্যাক বাটন সাপোর্ট
+     window.addEventListener('popstate', () => {
+     if (isIntelModalOpen) {
+     isIntelModalOpen = false;
+     
+     const modal = document.getElementById('intelModal');
+     const content = document.getElementById('intelModalContent');
+     
+     modal.classList.add('opacity-0');
+     content.classList.add('translate-y-full');
+     setTimeout(() => {
+     modal.classList.add('hidden');
+     }, 300);
+     }
+     });
+     
+     // মডালের বাইরে কালো অংশে ক্লিক সাপোর্ট
+     document.getElementById('intelModal').addEventListener('click', (e) => {
+     if (e.target.id === 'intelModal') {
+     closeIntelModal();
+     }
+     });
+     
+        /* ================= Navigation System ================= */
+        function switchTab(tabId) {
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            document.getElementById(`nav-${tabId}`).classList.add('active');
+
+            ['dashboard', 'terminal', 'intel', 'logs'].forEach(view => {
+                const el = document.getElementById(`view-${view}`);
+                el.classList.add('hidden');
+                el.style.animation = 'none';
+                el.offsetHeight; 
+                el.style.animation = null; 
+            });
+
+            document.getElementById(`view-${tabId}`).classList.remove('hidden');
+            document.getElementById('mainScrollArea').scrollTop = 0;
+        }
+
+    </script>
+</body>
+</html>
+
